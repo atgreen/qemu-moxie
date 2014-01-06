@@ -319,7 +319,8 @@ print_insn_moxie(bfd_vma addr, struct disassemble_info * info)
             }
             break;
         default:
-            abort();
+            fpr(stream, "bad");
+            break;
         }
     }
     else if ((iword & (1<<14)) == 0) {
@@ -336,7 +337,8 @@ print_insn_moxie(bfd_vma addr, struct disassemble_info * info)
             fpr(stream, "%s", opcode->name);
             break;
         default:
-            abort();
+            fpr(stream, "bad");
+            break;
         }
     } else {
         /* Extract the Form 3 opcode.  */
@@ -348,7 +350,8 @@ print_insn_moxie(bfd_vma addr, struct disassemble_info * info)
                                      info);
             break;
         default:
-            abort();
+            fpr(stream, "bad");
+            break;
         }
     }
 
