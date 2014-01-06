@@ -102,10 +102,13 @@ static void moxie_cpu_class_init(ObjectClass *oc, void *data)
     cc->do_interrupt = moxie_cpu_do_interrupt;
     cc->dump_state = moxie_cpu_dump_state;
     cc->set_pc = moxie_cpu_set_pc;
+    cc->gdb_read_register = moxie_cpu_gdb_read_register;
+    cc->gdb_write_register = moxie_cpu_gdb_write_register;
 #ifndef CONFIG_USER_ONLY
     cc->get_phys_page_debug = moxie_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_moxie_cpu;
 #endif
+    cc->gdb_num_core_regs = 16 + 1;
 }
 
 static void moxielite_initfn(Object *obj)
