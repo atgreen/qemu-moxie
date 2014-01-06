@@ -294,12 +294,12 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 /* Make space for the static chain and return address.  */
                 tcg_gen_subi_i32(t2, REG(1), 8);
                 tcg_gen_mov_i32(REG(1), t2);
-                tcg_gen_qemu_st32(t1, REG(1), ctx->memidx);
+                tcg_gen_qemu_st_i32(t1, REG(1), ctx->memidx, MO_TEUL);
 
                 /* Push the current frame pointer.  */
                 tcg_gen_subi_i32(t2, REG(1), 4);
                 tcg_gen_mov_i32(REG(1), t2);
-                tcg_gen_qemu_st32(REG(0), REG(1), ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(0), REG(1), ctx->memidx, MO_TEUL);
 
                 /* Set the pc and $fp.  */
                 tcg_gen_mov_i32(REG(0), REG(1));
@@ -321,14 +321,14 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 tcg_gen_mov_i32(REG(1), REG(0));
 
                 /* Pop the frame pointer.  */
-                tcg_gen_qemu_ld32u(REG(0), REG(1), ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(0), REG(1), ctx->memidx, MO_TEUL);
                 tcg_gen_addi_i32(t1, REG(1), 4);
                 tcg_gen_mov_i32(REG(1), t1);
 
 
                 /* Pop the return address and skip over the static chain
                    slot.  */
-                tcg_gen_qemu_ld32u(cpu_pc, REG(1), ctx->memidx);
+                tcg_gen_qemu_ld_i32(cpu_pc, REG(1), ctx->memidx, MO_TEUL);
                 tcg_gen_addi_i32(t1, REG(1), 8);
                 tcg_gen_mov_i32(REG(1), t1);
 
@@ -356,7 +356,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 tcg_gen_subi_i32(t1, REG(a), 4);
                 tcg_gen_mov_i32(REG(a), t1);
-                tcg_gen_qemu_st32(REG(b), REG(a), ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(b), REG(a), ctx->memidx, MO_TEUL);
                 tcg_temp_free_i32(t1);
             }
             break;
@@ -366,7 +366,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int b = opcode & 0xf;
                 TCGv t1 = tcg_temp_new_i32();
 
-                tcg_gen_qemu_ld32u(REG(b), REG(a), ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(b), REG(a), ctx->memidx, MO_TEUL);
                 tcg_gen_addi_i32(t1, REG(a), 4);
                 tcg_gen_mov_i32(REG(a), t1);
                 tcg_temp_free_i32(t1);
@@ -378,7 +378,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv ptr = tcg_temp_new_i32();
                 tcg_gen_movi_i32(ptr, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_ld32u(REG(reg), ptr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(reg), ptr, ctx->memidx, MO_TEUL);
                 tcg_temp_free_i32(ptr);
 
                 length = 6;
@@ -390,7 +390,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv ptr = tcg_temp_new_i32();
                 tcg_gen_movi_i32(ptr, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_st32(REG(val), ptr, ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(val), ptr, ctx->memidx, MO_TEUL);
                 tcg_temp_free_i32(ptr);
 
                 length = 6;
@@ -401,7 +401,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int src  = opcode & 0xf;
                 int dest = (opcode >> 4) & 0xf;
 
-                tcg_gen_qemu_ld32u(REG(dest), REG(src), ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(dest), REG(src), ctx->memidx, MO_TEUL);
             }
             break;
         case 0x0b: /* st.l */
@@ -409,7 +409,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int dest = (opcode >> 4) & 0xf;
                 int val  = opcode & 0xf;
 
-                tcg_gen_qemu_st32(REG(val), REG(dest), ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(val), REG(dest), ctx->memidx, MO_TEUL);
             }
             break;
         case 0x0c: /* ldo.l */
@@ -420,7 +420,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
                 tcg_gen_addi_i32(t1, REG(b), cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_ld32u(t2, t1, ctx->memidx);
+                tcg_gen_qemu_ld_i32(t2, t1, ctx->memidx, MO_TEUL);
                 tcg_gen_mov_i32(REG(a), t2);
 
                 tcg_temp_free_i32(t1);
@@ -437,7 +437,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
                 tcg_gen_addi_i32(t1, REG(a), cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_st32(REG(b), t1, ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(b), t1, ctx->memidx, MO_TEUL);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
@@ -467,12 +467,12 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 /* Make space for the static chain and return address.  */
                 tcg_gen_subi_i32(t2, REG(1), 8);
                 tcg_gen_mov_i32(REG(1), t2);
-                tcg_gen_qemu_st32(t1, REG(1), ctx->memidx);
+                tcg_gen_qemu_st_i32(t1, REG(1), ctx->memidx, MO_TEUL);
 
                 /* Push the current frame pointer.  */
                 tcg_gen_subi_i32(t2, REG(1), 4);
                 tcg_gen_mov_i32(REG(1), t2);
-                tcg_gen_qemu_st32(REG(0), REG(1), ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(0), REG(1), ctx->memidx, MO_TEUL);
 
                 /* Set the pc and $fp.  */
                 tcg_gen_mov_i32(REG(0), REG(1));
@@ -504,7 +504,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int src  = opcode & 0xf;
                 int dest = (opcode >> 4) & 0xf;
 
-                tcg_gen_qemu_ld8u(REG(dest), REG(src), ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(dest), REG(src), ctx->memidx, MO_UB);
             }
             break;
         case 0x1d: /* lda.b */
@@ -513,7 +513,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv ptr = tcg_temp_new_i32();
                 tcg_gen_movi_i32(ptr, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_ld8u(REG(reg), ptr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(reg), ptr, ctx->memidx, MO_UB);
                 tcg_temp_free_i32(ptr);
 
                 length = 6;
@@ -524,7 +524,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int dest = (opcode >> 4) & 0xf;
                 int val  = opcode & 0xf;
 
-                tcg_gen_qemu_st8(REG(val), REG(dest), ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(val), REG(dest), ctx->memidx, MO_UB);
             }
             break;
         case 0x1f: /* sta.b */
@@ -533,7 +533,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv ptr = tcg_temp_new_i32();
                 tcg_gen_movi_i32(ptr, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_st8(REG(val), ptr, ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(val), ptr, ctx->memidx, MO_UB);
                 tcg_temp_free_i32(ptr);
 
                 length = 6;
@@ -552,7 +552,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int src  = opcode & 0xf;
                 int dest = (opcode >> 4) & 0xf;
 
-                tcg_gen_qemu_ld16u(REG(dest), REG(src), ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(dest), REG(src), ctx->memidx, MO_TEUW);
             }
             break;
         case 0x22: /* lda.s */
@@ -561,7 +561,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv ptr = tcg_temp_new_i32();
                 tcg_gen_movi_i32(ptr, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_ld16u(REG(reg), ptr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(REG(reg), ptr, ctx->memidx, MO_TEUW);
                 tcg_temp_free_i32(ptr);
 
                 length = 6;
@@ -572,7 +572,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int dest = (opcode >> 4) & 0xf;
                 int val  = opcode & 0xf;
 
-                tcg_gen_qemu_st16(REG(val), REG(dest), ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(val), REG(dest), ctx->memidx, MO_TEUW);
             }
             break;
         case 0x24: /* sta.s */
@@ -581,7 +581,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv ptr = tcg_temp_new_i32();
                 tcg_gen_movi_i32(ptr, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_st16(REG(val), ptr, ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(val), ptr, ctx->memidx, MO_TEUW);
                 tcg_temp_free_i32(ptr);
 
                 length = 6;
@@ -747,7 +747,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
                 tcg_gen_addi_i32(t1, REG(b), cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_ld8u(t2, t1, ctx->memidx);
+                tcg_gen_qemu_ld_i32(t2, t1, ctx->memidx, MO_UB);
                 tcg_gen_mov_i32(REG(a), t2);
 
                 tcg_temp_free_i32(t1);
@@ -764,7 +764,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
                 tcg_gen_addi_i32(t1, REG(a), cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_st8(REG(b), t1, ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(b), t1, ctx->memidx, MO_UB);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
@@ -780,7 +780,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
                 tcg_gen_addi_i32(t1, REG(b), cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_ld16u(t2, t1, ctx->memidx);
+                tcg_gen_qemu_ld_i32(t2, t1, ctx->memidx, MO_TEUW);
                 tcg_gen_mov_i32(REG(a), t2);
 
                 tcg_temp_free_i32(t1);
@@ -797,7 +797,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
                 tcg_gen_addi_i32(t1, REG(a), cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_qemu_st16(REG(b), t1, ctx->memidx);
+                tcg_gen_qemu_st_i32(REG(b), t1, ctx->memidx, MO_TEUW);
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
