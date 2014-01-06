@@ -911,6 +911,14 @@ gen_intermediate_code_internal(MoxieCPU *cpu, TranslationBlock *tb,
         tb->size = ctx.pc - pc_start;
         tb->icount = num_insns;
     }
+
+#ifdef DEBUG_DISAS
+    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
+	qemu_log("IN:\n");	/* , lookup_symbol(pc_start)); */
+        log_target_disas(env, pc_start, ctx.pc - pc_start, 0);
+	qemu_log("\n");
+    }
+#endif
 }
 
 void gen_intermediate_code(CPUMoxieState *env, struct TranslationBlock *tb)

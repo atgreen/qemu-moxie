@@ -367,6 +367,8 @@ void disas(FILE *out, void *code, unsigned long size)
     print_insn = print_insn_big_mips;
 #elif defined(__MIPSEL__)
     print_insn = print_insn_little_mips;
+#elif defined(__MOXIE__)
+    print_insn = print_insn_moxie;
 #elif defined(__m68k__)
     print_insn = print_insn_m68k;
 #elif defined(__s390__)
