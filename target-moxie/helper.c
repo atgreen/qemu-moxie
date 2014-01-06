@@ -56,8 +56,8 @@ void tlb_fill(CPUMoxieState *env, target_ulong addr, int is_write, int mmu_idx,
         if (retaddr) {
             cpu_restore_state(env, retaddr);
         }
+	cpu_loop_exit(env);
     }
-    cpu_loop_exit(env);
 }
 
 void helper_raise_exception(CPUMoxieState *env, int ex)
