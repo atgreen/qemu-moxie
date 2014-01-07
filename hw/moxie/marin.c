@@ -110,6 +110,17 @@ static inline DeviceState *marin_intc_create(hwaddr base)
     return dev;
 }
 
+static inline DeviceState *marin_timer_create(qemu_irq irq)
+{
+    DeviceState *dev;
+
+    dev = qdev_create(NULL, "marin_timer");
+    qdev_init_nofail(dev);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq);
+
+    return dev;
+}
+
 static void marin_init(QEMUMachineInitArgs *args)
 {
     MoxieCPU *cpu = NULL;
@@ -160,8 +171,9 @@ static void marin_init(QEMUMachineInitArgs *args)
         load_kernel(cpu, &loader_params);
     }
 
-    marin_uart_create(0xF0000008, env->irq[4]);
     marin_intc_create(0xF0000010);
+    marin_uart_create(0xF0000008, env->irq[4]);
+    marin_timer_create(env->irq[1]);
 }
 
 static QEMUMachine marin_machine = {
