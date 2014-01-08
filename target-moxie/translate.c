@@ -267,8 +267,6 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
         /* This is a Form 1 instruction.  */
         int inst = opcode >> 8;
         switch (inst) {
-        case 0x00: /* nop */
-            break;
         case 0x01: /* ldi.l (immediate) */
             {
                 int reg = (opcode >> 4) & 0xf;
@@ -453,6 +451,8 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 tcg_gen_mov_i32(cc_a, REG(a));
                 tcg_gen_mov_i32(cc_b, REG(b));
             }
+            break;
+        case 0x0f: /* nop */
             break;
         case 0x19: /* jsr */
             {
