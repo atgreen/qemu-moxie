@@ -30,21 +30,27 @@
 #include "exec/address-spaces.h"
 
 typedef struct {
+    MoxieCPU *cpu;
+    hwaddr bootstrap_pc;
+} ResetInfo;
+
+typedef struct {
     uint64_t ram_size;
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *initrd_filename;
+    uint64_t entry;
 } LoaderParams;
 
 static void load_kernel(MoxieCPU *cpu, LoaderParams *loader_params)
 {
-    uint64_t entry, kernel_low, kernel_high;
+    uint64_t kernel_low, kernel_high;
     long kernel_size;
     long initrd_size;
     ram_addr_t initrd_offset;
 
     kernel_size = load_elf(loader_params->kernel_filename,  NULL, NULL,
-                           &entry, &kernel_low, &kernel_high, 1,
+                           &loader_params->entry, &kernel_low, &kernel_high, 1,
                            ELF_MACHINE, 0);
 
     if (!kernel_size) {
@@ -81,9 +87,11 @@ static void load_kernel(MoxieCPU *cpu, LoaderParams *loader_params)
 
 static void main_cpu_reset(void *opaque)
 {
-    MoxieCPU *cpu = opaque;
+    ResetInfo *reset_info = opaque;
+    CPUMoxieState *env = &reset_info->cpu->env;
 
-    cpu_reset(CPU(cpu));
+    cpu_reset(CPU(reset_info->cpu));
+    env->pc = (uint32_t)reset_info->bootstrap_pc;
 }
 
 static inline DeviceState *marin_uart_create(hwaddr base,
@@ -135,7 +143,10 @@ static void marin_init(QEMUMachineInitArgs *args)
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *rom = g_new(MemoryRegion, 1);
     hwaddr ram_base = 0x30000000;
+    ResetInfo *reset_info;
     LoaderParams loader_params;
+
+    reset_info = g_malloc0(sizeof(ResetInfo));
 
     /* Init CPUs. */
     if (cpu_model == NULL) {
@@ -146,9 +157,10 @@ static void marin_init(QEMUMachineInitArgs *args)
         fprintf(stderr, "Unable to find CPU definition\n");
         exit(1);
     }
+    reset_info->cpu = cpu;
     env = &cpu->env;
 
-    qemu_register_reset(main_cpu_reset, cpu);
+    qemu_register_reset(main_cpu_reset, reset_info);
 
     /* Allocate RAM. */
     memory_region_init_ram(ocram, NULL, "marin-onchip.ram", 0x1000*4);
@@ -163,12 +175,15 @@ static void marin_init(QEMUMachineInitArgs *args)
     vmstate_register_ram_global(rom);
     memory_region_add_subregion(get_system_memory(), 0x1000, rom);
 
+    reset_info->bootstrap_pc = 0x1000;
+
     if (kernel_filename) {
         loader_params.ram_size = ram_size;
         loader_params.kernel_filename = kernel_filename;
         loader_params.kernel_cmdline = kernel_cmdline;
         loader_params.initrd_filename = initrd_filename;
         load_kernel(cpu, &loader_params);
+        reset_info->bootstrap_pc = (hwaddr) loader_params.entry;
     }
 
     marin_intc_create(0xF0000010);
