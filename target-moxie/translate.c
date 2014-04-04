@@ -1,7 +1,7 @@
 /*
  *  Moxie emulation for qemu: main translation routines.
  *
- *  Copyright (c) 2009, 2013 Anthony Green
+ *  Copyright (c) 2009, 2013, 2014 Anthony Green
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -453,6 +453,20 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
             }
             break;
         case 0x0f: /* nop */
+            break;
+        case 0x10: /* sex.b */
+            {
+                int a  = (opcode >> 4) & 0xf;
+                int b  = opcode & 0xf;
+                tcg_gen_ext8s_i32(REG(a), REG(b));
+            }
+            break;
+        case 0x11: /* sex.s */
+            {
+                int a  = (opcode >> 4) & 0xf;
+                int b  = opcode & 0xf;
+                tcg_gen_ext16s_i32(REG(a), REG(b));
+            }
             break;
         case 0x19: /* jsr */
             {
