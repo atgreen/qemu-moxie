@@ -338,7 +338,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 ctx->bstate = BS_BRANCH;
             }
             break;
-        case 0x05: /* add.l */
+        case 0x05: /* add */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
@@ -466,6 +466,20 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int a  = (opcode >> 4) & 0xf;
                 int b  = opcode & 0xf;
                 tcg_gen_ext16s_i32(REG(a), REG(b));
+            }
+            break;
+        case 0x12: /* zex.b */
+            {
+                int a  = (opcode >> 4) & 0xf;
+                int b  = opcode & 0xf;
+                tcg_gen_ext8u_i32(REG(a), REG(b));
+            }
+            break;
+        case 0x13: /* zex.s */
+            {
+                int a  = (opcode >> 4) & 0xf;
+                int b  = opcode & 0xf;
+                tcg_gen_ext16u_i32(REG(a), REG(b));
             }
             break;
         case 0x19: /* jsr */
@@ -639,7 +653,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 tcg_temp_free_i32(sv);
             }
             break;
-        case 0x29: /* sub.l */
+        case 0x29: /* sub */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
@@ -690,7 +704,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 tcg_gen_xor_i32(REG(a), REG(a), REG(b));
             }
             break;
-        case 0x2f: /* mul.l */
+        case 0x2f: /* mul */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
@@ -714,7 +728,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 length = 6;
             }
             break;
-        case 0x31: /* div.l */
+        case 0x31: /* div */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
@@ -722,7 +736,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 gen_helper_div(REG(a), cpu_env, REG(a), REG(b));
             }
             break;
-        case 0x32: /* udiv.l */
+        case 0x32: /* udiv */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
@@ -730,14 +744,14 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 gen_helper_udiv(REG(a), cpu_env, REG(a), REG(b));
             }
             break;
-        case 0x33: /* mod.l */
+        case 0x33: /* mod */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
                 tcg_gen_rem_i32(REG(a), REG(a), REG(b));
             }
             break;
-        case 0x34: /* umod.l */
+        case 0x34: /* umod */
             {
                 int a = (opcode >> 4) & 0xf;
                 int b = opcode & 0xf;
