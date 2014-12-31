@@ -417,14 +417,14 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
-                tcg_gen_addi_i32(t1, REG(b), cpu_ldl_code(env, ctx->pc+2));
+                tcg_gen_addi_i32(t1, REG(b), cpu_ldsw_code(env, ctx->pc+2));
                 tcg_gen_qemu_ld_i32(t2, t1, ctx->memidx, MO_TEUL);
                 tcg_gen_mov_i32(REG(a), t2);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
-                length = 6;
+                length = 4;
             }
             break;
         case 0x0d: /* sto.l */
@@ -434,13 +434,13 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
-                tcg_gen_addi_i32(t1, REG(a), cpu_ldl_code(env, ctx->pc+2));
+                tcg_gen_addi_i32(t1, REG(a), cpu_ldsw_code(env, ctx->pc+2));
                 tcg_gen_qemu_st_i32(REG(b), t1, ctx->memidx, MO_TEUL);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
-                length = 6;
+                length = 4;
             }
             break;
         case 0x0e: /* cmp */
@@ -480,6 +480,26 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 int a  = (opcode >> 4) & 0xf;
                 int b  = opcode & 0xf;
                 tcg_gen_ext16u_i32(REG(a), REG(b));
+            }
+            break;
+        case 0x14: /* umul.x */
+            {
+                int a = (opcode >> 4) & 0xf;
+                int b = opcode & 0xf;
+
+		TCGv_i32 t1 = tcg_temp_new_i32();
+                tcg_gen_mulu2_i32(t1, REG(a), REG(a), REG(b));
+		tcg_temp_free_i32(t1);
+            }
+            break;
+        case 0x15: /* mul.x */
+            {
+                int a = (opcode >> 4) & 0xf;
+                int b = opcode & 0xf;
+
+		TCGv_i32 t1 = tcg_temp_new_i32();
+                tcg_gen_muls2_i32(t1, REG(a), REG(a), REG(b));
+		tcg_temp_free_i32(t1);
             }
             break;
         case 0x19: /* jsr */
@@ -774,14 +794,14 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
-                tcg_gen_addi_i32(t1, REG(b), cpu_ldl_code(env, ctx->pc+2));
+                tcg_gen_addi_i32(t1, REG(b), cpu_ldsw_code(env, ctx->pc+2));
                 tcg_gen_qemu_ld_i32(t2, t1, ctx->memidx, MO_UB);
                 tcg_gen_mov_i32(REG(a), t2);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
-                length = 6;
+                length = 4;
             }
             break;
         case 0x37: /* sto.b */
@@ -791,13 +811,13 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
-                tcg_gen_addi_i32(t1, REG(a), cpu_ldl_code(env, ctx->pc+2));
+                tcg_gen_addi_i32(t1, REG(a), cpu_ldsw_code(env, ctx->pc+2));
                 tcg_gen_qemu_st_i32(REG(b), t1, ctx->memidx, MO_UB);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
-                length = 6;
+                length = 4;
             }
             break;
         case 0x38: /* ldo.s */
@@ -807,14 +827,14 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
-                tcg_gen_addi_i32(t1, REG(b), cpu_ldl_code(env, ctx->pc+2));
+                tcg_gen_addi_i32(t1, REG(b), cpu_ldsw_code(env, ctx->pc+2));
                 tcg_gen_qemu_ld_i32(t2, t1, ctx->memidx, MO_TEUW);
                 tcg_gen_mov_i32(REG(a), t2);
 
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
-                length = 6;
+                length = 4;
             }
             break;
         case 0x39: /* sto.s */
@@ -824,12 +844,12 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 
                 TCGv t1 = tcg_temp_new_i32();
                 TCGv t2 = tcg_temp_new_i32();
-                tcg_gen_addi_i32(t1, REG(a), cpu_ldl_code(env, ctx->pc+2));
+                tcg_gen_addi_i32(t1, REG(a), cpu_ldsw_code(env, ctx->pc+2));
                 tcg_gen_qemu_st_i32(REG(b), t1, ctx->memidx, MO_TEUW);
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
 
-                length = 6;
+                length = 4;
             }
             break;
         default:
