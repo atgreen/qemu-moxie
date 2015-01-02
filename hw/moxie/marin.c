@@ -142,7 +142,7 @@ static void marin_init(QEMUMachineInitArgs *args)
     MemoryRegion *ocram = g_new(MemoryRegion, 1);
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *rom = g_new(MemoryRegion, 1);
-    hwaddr ram_base = 0x30000000;
+    hwaddr ram_base = 0x2ffff000;
     ResetInfo *reset_info;
     LoaderParams loader_params;
 
