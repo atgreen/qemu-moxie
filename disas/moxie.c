@@ -33,8 +33,8 @@ static void *stream;
    Some use B and an indirect A                    (MOXIE_F1_AiB)
    Some use A and an indirect B                    (MOXIE_F1_ABi)
    Some consume a 4 byte immediate value and use X (MOXIE_F1_4A)
-   Some use B and an indirect A plus 4 bytes       (MOXIE_F1_AiB4)
-   Some use A and an indirect B plus 4 bytes       (MOXIE_F1_ABi4)
+   Some use B and an indirect A plus 2 bytes       (MOXIE_F1_AiB2)
+   Some use A and an indirect B plus 2 bytes       (MOXIE_F1_ABi2)
 
    Form 2 instructions also come in different flavors:
 
@@ -55,8 +55,8 @@ static void *stream;
 #define MOXIE_F1_AiB  0x106
 #define MOXIE_F1_ABi  0x107
 #define MOXIE_F1_4A   0x108
-#define MOXIE_F1_AiB4 0x109
-#define MOXIE_F1_ABi4 0x10a
+#define MOXIE_F1_AiB2 0x109
+#define MOXIE_F1_ABi2 0x10a
 #define MOXIE_F1_M    0x10b
 
 #define MOXIE_F2_NARG 0x200
@@ -105,28 +105,28 @@ extern const moxie_opc_info_t moxie_form3_opc_info[16];
 
 const moxie_opc_info_t moxie_form1_opc_info[64] =
     {
-        { 0x00, MOXIE_F1_NARG, "nop" },
+        { 0x00, MOXIE_F1_NARG, "bad" },
         { 0x01, MOXIE_F1_A4,   "ldi.l" },
         { 0x02, MOXIE_F1_AB,   "mov" },
         { 0x03, MOXIE_F1_M,    "jsra" },
         { 0x04, MOXIE_F1_NARG, "ret" },
-        { 0x05, MOXIE_F1_AB,   "add.l" },
+        { 0x05, MOXIE_F1_AB,   "add" },
         { 0x06, MOXIE_F1_AB,   "push" },
         { 0x07, MOXIE_F1_AB,   "pop" },
         { 0x08, MOXIE_F1_A4,   "lda.l" },
         { 0x09, MOXIE_F1_4A,   "sta.l" },
         { 0x0a, MOXIE_F1_ABi,  "ld.l" },
         { 0x0b, MOXIE_F1_AiB,  "st.l" },
-        { 0x0c, MOXIE_F1_ABi4, "ldo.l" },
-        { 0x0d, MOXIE_F1_AiB4, "sto.l" },
+        { 0x0c, MOXIE_F1_ABi2, "ldo.l" },
+        { 0x0d, MOXIE_F1_AiB2, "sto.l" },
         { 0x0e, MOXIE_F1_AB,   "cmp" },
-        { 0x0f, MOXIE_F1_NARG, "bad" },
-        { 0x10, MOXIE_F1_NARG, "bad" },
-        { 0x11, MOXIE_F1_NARG, "bad" },
-        { 0x12, MOXIE_F1_NARG, "bad" },
-        { 0x13, MOXIE_F1_NARG, "bad" },
-        { 0x14, MOXIE_F1_NARG, "bad" },
-        { 0x15, MOXIE_F1_NARG, "bad" },
+	{ 0x0f, MOXIE_F1_NARG, "nop" },
+	{ 0x10, MOXIE_F1_AB,   "sex.b" },
+	{ 0x11, MOXIE_F1_AB,   "sex.s" },
+	{ 0x12, MOXIE_F1_AB,   "zex.b" },
+	{ 0x13, MOXIE_F1_AB,   "zex.s" },
+	{ 0x14, MOXIE_F1_AB,   "umul.x" },
+	{ 0x15, MOXIE_F1_AB,   "mul.x" },
         { 0x16, MOXIE_F1_NARG, "bad" },
         { 0x17, MOXIE_F1_NARG, "bad" },
         { 0x18, MOXIE_F1_NARG, "bad" },
@@ -146,23 +146,23 @@ const moxie_opc_info_t moxie_form1_opc_info[64] =
         { 0x26, MOXIE_F1_AB,   "and" },
         { 0x27, MOXIE_F1_AB,   "lshr" },
         { 0x28, MOXIE_F1_AB,   "ashl" },
-        { 0x29, MOXIE_F1_AB,   "sub.l" },
+        { 0x29, MOXIE_F1_AB,   "sub" },
         { 0x2a, MOXIE_F1_AB,   "neg" },
         { 0x2b, MOXIE_F1_AB,   "or" },
         { 0x2c, MOXIE_F1_AB,   "not" },
         { 0x2d, MOXIE_F1_AB,   "ashr" },
         { 0x2e, MOXIE_F1_AB,   "xor" },
-        { 0x2f, MOXIE_F1_AB,   "mul.l" },
+        { 0x2f, MOXIE_F1_AB,   "mul" },
         { 0x30, MOXIE_F1_4,    "swi" },
         { 0x31, MOXIE_F1_AB,   "div.l" },
         { 0x32, MOXIE_F1_AB,   "udiv.l" },
         { 0x33, MOXIE_F1_AB,   "mod.l" },
         { 0x34, MOXIE_F1_AB,   "umod.l" },
         { 0x35, MOXIE_F1_NARG, "brk" },
-        { 0x36, MOXIE_F1_ABi4, "ldo.b" },
-        { 0x37, MOXIE_F1_AiB4, "sto.b" },
-        { 0x38, MOXIE_F1_ABi4, "ldo.s" },
-        { 0x39, MOXIE_F1_AiB4, "sto.s" },
+        { 0x36, MOXIE_F1_ABi2, "ldo.b" },
+        { 0x37, MOXIE_F1_AiB2, "sto.b" },
+        { 0x38, MOXIE_F1_ABi2, "ldo.s" },
+        { 0x39, MOXIE_F1_AiB2, "sto.s" },
         { 0x3a, MOXIE_F1_NARG, "bad" },
         { 0x3b, MOXIE_F1_NARG, "bad" },
         { 0x3c, MOXIE_F1_NARG, "bad" },
@@ -291,31 +291,31 @@ print_insn_moxie(bfd_vma addr, struct disassemble_info * info)
                 length = 6;
             }
             break;
-        case MOXIE_F1_AiB4:
+        case MOXIE_F1_AiB2:
             {
                 unsigned imm;
-                if ((status = info->read_memory_func(addr+2, buffer, 4, info)))
+                if ((status = info->read_memory_func(addr+2, buffer, 2, info)))
                     goto fail;
-                imm = bfd_getb32(buffer);
+                imm = bfd_getb16(buffer);
                 fpr(stream, "%s\t0x%x(%s), %s", opcode->name,
                     imm,
                     reg_names[OP_A(iword)],
                     reg_names[OP_B(iword)]);
-                length = 6;
+                length = 4;
             }
             break;
-        case MOXIE_F1_ABi4:
+        case MOXIE_F1_ABi2:
             {
                 unsigned imm;
-                if ((status = info->read_memory_func(addr+2, buffer, 4, info)))
+                if ((status = info->read_memory_func(addr+2, buffer, 2, info)))
                     goto fail;
-                imm = bfd_getb32(buffer);
+                imm = bfd_getb16(buffer);
                 fpr(stream, "%s\t%s, 0x%x(%s)",
                     opcode->name,
                     reg_names[OP_A(iword)],
                     imm,
                     reg_names[OP_B(iword)]);
-                length = 6;
+                length = 4;
             }
             break;
         default:
