@@ -30,7 +30,7 @@
 #include <string.h>
 #include <stddef.h>
 #include "cpu.h"
-#include "helper.h"
+#include "exec/helper-proto.h"
 #include "qemu/log.h"
 
 enum {
@@ -313,7 +313,7 @@ void HELPER(simcall)(CPUXtensaState *env)
         break;
 
     default:
-        qemu_log("%s(%d): not implemented\n", __func__, regs[2]);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s(%d): not implemented\n", __func__, regs[2]);
         regs[2] = -1;
         regs[3] = TARGET_ENOSYS;
         break;

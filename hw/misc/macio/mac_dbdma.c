@@ -557,7 +557,6 @@ void DBDMA_register_channel(void *dbdma, int nchan, qemu_irq irq,
     DBDMA_DPRINTF("DBDMA_register_channel 0x%x\n", nchan);
 
     ch->irq = irq;
-    ch->channel = nchan;
     ch->rw = rw;
     ch->flush = flush;
     ch->io.opaque = opaque;
@@ -590,10 +589,11 @@ dbdma_control_write(DBDMA_channel *ch)
     if ((ch->regs[DBDMA_STATUS] & RUN) && !(status & RUN)) {
         /* RUN is cleared */
         status &= ~(ACTIVE|DEAD);
-        if ((status & FLUSH) && ch->flush) {
-            ch->flush(&ch->io);
-            status &= ~FLUSH;
-        }
+    }
+
+    if ((status & FLUSH) && ch->flush) {
+        ch->flush(&ch->io);
+        status &= ~FLUSH;
     }
 
     DBDMA_DPRINTF("    status 0x%08x\n", status);
@@ -602,9 +602,6 @@ dbdma_control_write(DBDMA_channel *ch)
 
     if (status & ACTIVE) {
         DBDMA_kick(dbdma_from_ch(ch));
-    }
-    if ((status & FLUSH) && ch->flush) {
-        ch->flush(&ch->io);
     }
 }
 
@@ -719,8 +716,7 @@ static const VMStateDescription vmstate_dbdma_channel = {
     .name = "dbdma_channel",
     .version_id = 0,
     .minimum_version_id = 0,
-    .minimum_version_id_old = 0,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, struct DBDMA_channel, DBDMA_REGS),
         VMSTATE_END_OF_LIST()
     }
@@ -730,8 +726,7 @@ static const VMStateDescription vmstate_dbdma = {
     .name = "dbdma",
     .version_id = 2,
     .minimum_version_id = 2,
-    .minimum_version_id_old = 2,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_STRUCT_ARRAY(channels, DBDMAState, DBDMA_CHANNELS, 1,
                              vmstate_dbdma_channel, DBDMA_channel),
         VMSTATE_END_OF_LIST()
@@ -750,8 +745,15 @@ static void dbdma_reset(void *opaque)
 void* DBDMA_init (MemoryRegion **dbdma_mem)
 {
     DBDMAState *s;
+    int i;
 
     s = g_malloc0(sizeof(DBDMAState));
+
+    for (i = 0; i < DBDMA_CHANNELS; i++) {
+        DBDMA_io *io = &s->channels[i].io;
+        qemu_iovec_init(&io->iov, 1);
+        s->channels[i].channel = i;
+    }
 
     memory_region_init_io(&s->mem, NULL, &dbdma_ops, s, "dbdma", 0x1000);
     *dbdma_mem = &s->mem;

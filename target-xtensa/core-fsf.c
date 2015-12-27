@@ -33,17 +33,16 @@
 #include "core-fsf/core-isa.h"
 #include "overlay_tool.h"
 
-static const XtensaConfig fsf = {
+static XtensaConfig fsf __attribute__((unused)) = {
     .name = "fsf",
-    .options = XTENSA_OPTIONS,
+    .gdb_regmap = {
     /* GDB for this core is not supported currently */
-    .nareg = XCHAL_NUM_AREGS,
-    .ndepc = 1,
-    EXCEPTIONS_SECTION,
-    INTERRUPTS_SECTION,
-    TLB_SECTION,
-    DEBUG_SECTION,
+        .reg = {
+            XTREG_END
+        },
+    },
     .clock_freq_khz = 10000,
+    DEFAULT_SECTIONS
 };
 
 REGISTER_CORE(fsf)

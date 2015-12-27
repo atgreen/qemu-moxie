@@ -196,6 +196,12 @@ static uint64_t pit_ioport_read(void *opaque, hwaddr addr,
     PITChannelState *s;
 
     addr &= 3;
+
+    if (addr == 3) {
+        /* Mode/Command register is write only, read is ignored */
+        return 0;
+    }
+
     s = &pit->channels[addr];
     if (s->status_latched) {
         s->status_latched = 0;
@@ -322,7 +328,7 @@ static void pit_post_load(PITCommonState *s)
     }
 }
 
-static void pit_realizefn(DeviceState *dev, Error **err)
+static void pit_realizefn(DeviceState *dev, Error **errp)
 {
     PITCommonState *pit = PIT_COMMON(dev);
     PITClass *pc = PIT_GET_CLASS(dev);
@@ -338,11 +344,11 @@ static void pit_realizefn(DeviceState *dev, Error **err)
 
     qdev_init_gpio_in(dev, pit_irq_control, 1);
 
-    pc->parent_realize(dev, err);
+    pc->parent_realize(dev, errp);
 }
 
 static Property pit_properties[] = {
-    DEFINE_PROP_HEX32("iobase", PITCommonState, iobase,  -1),
+    DEFINE_PROP_UINT32("iobase", PITCommonState, iobase,  -1),
     DEFINE_PROP_END_OF_LIST(),
 };
 

@@ -30,7 +30,7 @@ typedef struct OMAPI2CState {
     MemoryRegion iomem;
     qemu_irq irq;
     qemu_irq drq[2];
-    i2c_bus *bus;
+    I2CBus *bus;
 
     uint8_t revision;
     void *iclk;
@@ -171,9 +171,13 @@ static uint32_t omap_i2c_read(void *opaque, hwaddr addr)
     case 0x0c:	/* I2C_IV */
         if (s->revision >= OMAP2_INTR_REV)
             break;
-        ret = ffs(s->stat & s->mask);
-        if (ret)
-            s->stat ^= 1 << (ret - 1);
+        ret = ctz32(s->stat & s->mask);
+        if (ret != 32) {
+            s->stat ^= 1 << ret;
+            ret++;
+        } else {
+            ret = 0;
+        }
         omap_i2c_interrupts_update(s);
         return ret;
 
@@ -491,7 +495,7 @@ static void omap_i2c_register_types(void)
     type_register_static(&omap_i2c_info);
 }
 
-i2c_bus *omap_i2c_bus(DeviceState *omap_i2c)
+I2CBus *omap_i2c_bus(DeviceState *omap_i2c)
 {
     OMAPI2CState *s = OMAP_I2C(omap_i2c);
     return s->bus;

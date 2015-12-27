@@ -14,7 +14,7 @@
 
 #include "fsdev/qemu-fsdev.h"
 #include "qemu/thread.h"
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
 #include "virtio-9p-coth.h"
 
 int v9fs_co_st_gen(V9fsPDU *pdu, V9fsPath *path, mode_t st_mode,
@@ -37,10 +37,6 @@ int v9fs_co_st_gen(V9fsPDU *pdu, V9fsPath *path, mode_t st_mode,
                 }
             });
         v9fs_path_unlock(s);
-    }
-    /* The ioctl may not be supported depending on the path */
-    if (err == -ENOTTY) {
-        err = 0;
     }
     return err;
 }

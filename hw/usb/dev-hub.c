@@ -41,6 +41,9 @@ typedef struct USBHubState {
     USBHubPort ports[NUM_PORTS];
 } USBHubState;
 
+#define TYPE_USB_HUB "usb-hub"
+#define USB_HUB(obj) OBJECT_CHECK(USBHubState, (obj), TYPE_USB_HUB)
+
 #define ClearHubFeature		(0x2000 | USB_REQ_CLEAR_FEATURE)
 #define ClearPortFeature	(0x2300 | USB_REQ_CLEAR_FEATURE)
 #define GetHubDescriptor	(0xa000 | USB_REQ_GET_DESCRIPTOR)
@@ -119,7 +122,8 @@ static const USBDescDevice desc_device_hub = {
         {
             .bNumInterfaces        = 1,
             .bConfigurationValue   = 1,
-            .bmAttributes          = 0xe0,
+            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_SELFPOWER |
+                                     USB_CFG_ATT_WAKEUP,
             .nif = 1,
             .ifs = &desc_iface_hub,
         },
@@ -226,7 +230,7 @@ static void usb_hub_complete(USBPort *port, USBPacket *packet)
 
 static USBDevice *usb_hub_find_device(USBDevice *dev, uint8_t addr)
 {
-    USBHubState *s = DO_UPCAST(USBHubState, dev, dev);
+    USBHubState *s = USB_HUB(dev);
     USBHubPort *port;
     USBDevice *downstream;
     int i;
@@ -246,7 +250,7 @@ static USBDevice *usb_hub_find_device(USBDevice *dev, uint8_t addr)
 
 static void usb_hub_handle_reset(USBDevice *dev)
 {
-    USBHubState *s = DO_UPCAST(USBHubState, dev, dev);
+    USBHubState *s = USB_HUB(dev);
     USBHubPort *port;
     int i;
 
@@ -510,15 +514,15 @@ static USBPortOps usb_hub_port_ops = {
     .complete = usb_hub_complete,
 };
 
-static int usb_hub_initfn(USBDevice *dev)
+static void usb_hub_realize(USBDevice *dev, Error **errp)
 {
-    USBHubState *s = DO_UPCAST(USBHubState, dev, dev);
+    USBHubState *s = USB_HUB(dev);
     USBHubPort *port;
     int i;
 
     if (dev->port->hubcount == 5) {
-        error_report("usb hub chain too deep");
-        return -1;
+        error_setg(errp, "usb hub chain too deep");
+        return;
     }
 
     usb_desc_create_serial(dev);
@@ -532,14 +536,13 @@ static int usb_hub_initfn(USBDevice *dev)
         usb_port_location(&port->port, dev->port, i+1);
     }
     usb_hub_handle_reset(dev);
-    return 0;
 }
 
 static const VMStateDescription vmstate_usb_hub_port = {
     .name = "usb-hub-port",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT16(wPortStatus, USBHubPort),
         VMSTATE_UINT16(wPortChange, USBHubPort),
         VMSTATE_END_OF_LIST()
@@ -550,7 +553,7 @@ static const VMStateDescription vmstate_usb_hub = {
     .name = "usb-hub",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_USB_DEVICE(dev, USBHubState),
         VMSTATE_STRUCT_ARRAY(ports, USBHubState, NUM_PORTS, 0,
                              vmstate_usb_hub_port, USBHubPort),
@@ -563,7 +566,7 @@ static void usb_hub_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->init           = usb_hub_initfn;
+    uc->realize        = usb_hub_realize;
     uc->product_desc   = "QEMU USB Hub";
     uc->usb_desc       = &desc_hub;
     uc->find_device    = usb_hub_find_device;
@@ -577,7 +580,7 @@ static void usb_hub_class_initfn(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo hub_info = {
-    .name          = "usb-hub",
+    .name          = TYPE_USB_HUB,
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBHubState),
     .class_init    = usb_hub_class_initfn,

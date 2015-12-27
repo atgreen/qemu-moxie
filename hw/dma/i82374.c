@@ -38,7 +38,7 @@ do { fprintf(stderr, "i82374 ERROR: " fmt , ## __VA_ARGS__); } while (0)
 
 typedef struct I82374State {
     uint8_t commands[8];
-    qemu_irq out;
+    PortioList port_list;
 } I82374State;
 
 static const VMStateDescription vmstate_i82374 = {
@@ -100,7 +100,7 @@ static uint32_t i82374_read_descriptor(void *opaque, uint32_t nport)
 
 static void i82374_realize(I82374State *s, Error **errp)
 {
-    DMA_init(1, &s->out);
+    DMA_init(1);
     memset(s->commands, 0, sizeof(s->commands));
 }
 
@@ -137,19 +137,17 @@ static void i82374_isa_realize(DeviceState *dev, Error **errp)
 {
     ISAi82374State *isa = I82374(dev);
     I82374State *s = &isa->state;
-    PortioList *port_list = g_new(PortioList, 1);
 
-    portio_list_init(port_list, OBJECT(isa), i82374_portio_list, s, "i82374");
-    portio_list_add(port_list, isa_address_space_io(&isa->parent_obj),
+    portio_list_init(&s->port_list, OBJECT(isa), i82374_portio_list, s,
+                     "i82374");
+    portio_list_add(&s->port_list, isa_address_space_io(&isa->parent_obj),
                     isa->iobase);
 
     i82374_realize(s, errp);
-
-    qdev_init_gpio_out(dev, &s->out, 1);
 }
 
 static Property i82374_properties[] = {
-    DEFINE_PROP_HEX32("iobase", ISAi82374State, iobase, 0x400),
+    DEFINE_PROP_UINT32("iobase", ISAi82374State, iobase, 0x400),
     DEFINE_PROP_END_OF_LIST()
 };
 

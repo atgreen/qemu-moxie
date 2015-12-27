@@ -150,8 +150,7 @@ static const VMStateDescription vmstate_arm_timer = {
     .name = "arm_timer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT32(control, arm_timer_state),
         VMSTATE_UINT32(limit, arm_timer_state),
         VMSTATE_INT32(int_level, arm_timer_state),
@@ -271,8 +270,7 @@ static const VMStateDescription vmstate_sp804 = {
     .name = "sp804",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_INT32_ARRAY(level, SP804State, 2),
         VMSTATE_END_OF_LIST()
     }
@@ -282,14 +280,12 @@ static int sp804_init(SysBusDevice *sbd)
 {
     DeviceState *dev = DEVICE(sbd);
     SP804State *s = SP804(dev);
-    qemu_irq *qi;
 
-    qi = qemu_allocate_irqs(sp804_set_irq, s, 2);
     sysbus_init_irq(sbd, &s->irq);
     s->timer[0] = arm_timer_init(s->freq0);
     s->timer[1] = arm_timer_init(s->freq1);
-    s->timer[0]->irq = qi[0];
-    s->timer[1]->irq = qi[1];
+    s->timer[0]->irq = qemu_allocate_irq(sp804_set_irq, s, 0);
+    s->timer[1]->irq = qemu_allocate_irq(sp804_set_irq, s, 1);
     memory_region_init_io(&s->iomem, OBJECT(s), &sp804_ops, s,
                           "sp804", 0x1000);
     sysbus_init_mmio(sbd, &s->iomem);
@@ -320,6 +316,7 @@ static uint64_t icp_pit_read(void *opaque, hwaddr offset,
     n = offset >> 8;
     if (n > 2) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad timer %d\n", __func__, n);
+        return 0;
     }
 
     return arm_timer_read(s->timer[n], offset & 0xff);
@@ -334,6 +331,7 @@ static void icp_pit_write(void *opaque, hwaddr offset,
     n = offset >> 8;
     if (n > 2) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad timer %d\n", __func__, n);
+        return;
     }
 
     arm_timer_write(s->timer[n], offset & 0xff, value);

@@ -1,10 +1,12 @@
 /*
  * QEMU throttling infrastructure
  *
- * Copyright (C) Nodalink, SARL. 2013
+ * Copyright (C) Nodalink, EURL. 2013-2014
+ * Copyright (C) Igalia, S.L. 2015
  *
- * Author:
- *   Benoît Canet <benoit.canet@irqsave.net>
+ * Authors:
+ *   Benoît Canet <benoit.canet@nodalink.com>
+ *   Alberto Garcia <berto@igalia.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -22,6 +24,7 @@
 
 #include "qemu/throttle.h"
 #include "qemu/timer.h"
+#include "block/aio.h"
 
 /* This function make a bucket leak
  *
@@ -157,18 +160,37 @@ bool throttle_compute_timer(ThrottleState *ts,
     return false;
 }
 
+/* Add timers to event loop */
+void throttle_timers_attach_aio_context(ThrottleTimers *tt,
+                                        AioContext *new_context)
+{
+    tt->timers[0] = aio_timer_new(new_context, tt->clock_type, SCALE_NS,
+                                  tt->read_timer_cb, tt->timer_opaque);
+    tt->timers[1] = aio_timer_new(new_context, tt->clock_type, SCALE_NS,
+                                  tt->write_timer_cb, tt->timer_opaque);
+}
+
 /* To be called first on the ThrottleState */
-void throttle_init(ThrottleState *ts,
-                   QEMUClockType clock_type,
-                   QEMUTimerCB *read_timer_cb,
-                   QEMUTimerCB *write_timer_cb,
-                   void *timer_opaque)
+void throttle_init(ThrottleState *ts)
 {
     memset(ts, 0, sizeof(ThrottleState));
+}
 
-    ts->clock_type = clock_type;
-    ts->timers[0] = timer_new_ns(clock_type, read_timer_cb, timer_opaque);
-    ts->timers[1] = timer_new_ns(clock_type, write_timer_cb, timer_opaque);
+/* To be called first on the ThrottleTimers */
+void throttle_timers_init(ThrottleTimers *tt,
+                          AioContext *aio_context,
+                          QEMUClockType clock_type,
+                          QEMUTimerCB *read_timer_cb,
+                          QEMUTimerCB *write_timer_cb,
+                          void *timer_opaque)
+{
+    memset(tt, 0, sizeof(ThrottleTimers));
+
+    tt->clock_type = clock_type;
+    tt->read_timer_cb = read_timer_cb;
+    tt->write_timer_cb = write_timer_cb;
+    tt->timer_opaque = timer_opaque;
+    throttle_timers_attach_aio_context(tt, aio_context);
 }
 
 /* destroy a timer */
@@ -181,20 +203,26 @@ static void throttle_timer_destroy(QEMUTimer **timer)
     *timer = NULL;
 }
 
-/* To be called last on the ThrottleState */
-void throttle_destroy(ThrottleState *ts)
+/* Remove timers from event loop */
+void throttle_timers_detach_aio_context(ThrottleTimers *tt)
 {
     int i;
 
     for (i = 0; i < 2; i++) {
-        throttle_timer_destroy(&ts->timers[i]);
+        throttle_timer_destroy(&tt->timers[i]);
     }
 }
 
-/* is any throttling timer configured */
-bool throttle_have_timer(ThrottleState *ts)
+/* To be called last on the ThrottleTimers */
+void throttle_timers_destroy(ThrottleTimers *tt)
 {
-    if (ts->timers[0]) {
+    throttle_timers_detach_aio_context(tt);
+}
+
+/* is any throttling timer configured */
+bool throttle_timers_are_initialized(ThrottleTimers *tt)
+{
+    if (tt->timers[0]) {
         return true;
     }
 
@@ -272,6 +300,21 @@ bool throttle_is_valid(ThrottleConfig *cfg)
     return !invalid;
 }
 
+/* check if bps_max/iops_max is used without bps/iops
+ * @cfg: the throttling configuration to inspect
+ */
+bool throttle_max_is_missing_limit(ThrottleConfig *cfg)
+{
+    int i;
+
+    for (i = 0; i < BUCKETS_COUNT; i++) {
+        if (cfg->buckets[i].max && !cfg->buckets[i].avg) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* fix bucket parameters */
 static void throttle_fix_bucket(LeakyBucket *bkt)
 {
@@ -305,9 +348,12 @@ static void throttle_cancel_timer(QEMUTimer *timer)
 /* Used to configure the throttle
  *
  * @ts: the throttle state we are working on
+ * @tt: the throttle timers we use in this aio context
  * @cfg: the config to set
  */
-void throttle_config(ThrottleState *ts, ThrottleConfig *cfg)
+void throttle_config(ThrottleState *ts,
+                     ThrottleTimers *tt,
+                     ThrottleConfig *cfg)
 {
     int i;
 
@@ -317,10 +363,10 @@ void throttle_config(ThrottleState *ts, ThrottleConfig *cfg)
         throttle_fix_bucket(&ts->cfg.buckets[i]);
     }
 
-    ts->previous_leak = qemu_clock_get_ns(ts->clock_type);
+    ts->previous_leak = qemu_clock_get_ns(tt->clock_type);
 
     for (i = 0; i < 2; i++) {
-        throttle_cancel_timer(ts->timers[i]);
+        throttle_cancel_timer(tt->timers[i]);
     }
 }
 
@@ -339,12 +385,15 @@ void throttle_get_config(ThrottleState *ts, ThrottleConfig *cfg)
  *
  * NOTE: this function is not unit tested due to it's usage of timer_mod
  *
+ * @tt:       the timers structure
  * @is_write: the type of operation (read/write)
  * @ret:      true if the timer has been scheduled else false
  */
-bool throttle_schedule_timer(ThrottleState *ts, bool is_write)
+bool throttle_schedule_timer(ThrottleState *ts,
+                             ThrottleTimers *tt,
+                             bool is_write)
 {
-    int64_t now = qemu_clock_get_ns(ts->clock_type);
+    int64_t now = qemu_clock_get_ns(tt->clock_type);
     int64_t next_timestamp;
     bool must_wait;
 
@@ -359,12 +408,12 @@ bool throttle_schedule_timer(ThrottleState *ts, bool is_write)
     }
 
     /* request throttled and timer pending -> do nothing */
-    if (timer_pending(ts->timers[is_write])) {
+    if (timer_pending(tt->timers[is_write])) {
         return true;
     }
 
     /* request throttled and timer not pending -> arm timer */
-    timer_mod(ts->timers[is_write], next_timestamp);
+    timer_mod(tt->timers[is_write], next_timestamp);
     return true;
 }
 

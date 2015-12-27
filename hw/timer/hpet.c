@@ -1,5 +1,5 @@
 /*
- *  High Precisition Event Timer emulation
+ *  High Precision Event Timer emulation
  *
  *  Copyright (c) 2007 Alexander Graf
  *  Copyright (c) 2008 IBM Corporation
@@ -27,6 +27,7 @@
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "ui/console.h"
+#include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "hw/timer/hpet.h"
 #include "hw/sysbus.h"
@@ -115,22 +116,22 @@ static uint32_t timer_enabled(HPETTimer *t)
 
 static uint32_t hpet_time_after(uint64_t a, uint64_t b)
 {
-    return ((int32_t)(b) - (int32_t)(a) < 0);
+    return ((int32_t)(b - a) < 0);
 }
 
 static uint32_t hpet_time_after64(uint64_t a, uint64_t b)
 {
-    return ((int64_t)(b) - (int64_t)(a) < 0);
+    return ((int64_t)(b - a) < 0);
 }
 
 static uint64_t ticks_to_ns(uint64_t value)
 {
-    return (muldiv64(value, HPET_CLK_PERIOD, FS_PER_NS));
+    return value * HPET_CLK_PERIOD;
 }
 
 static uint64_t ns_to_ticks(uint64_t value)
 {
-    return (muldiv64(value, FS_PER_NS, HPET_CLK_PERIOD));
+    return value / HPET_CLK_PERIOD;
 }
 
 static uint64_t hpet_fixup_reg(uint64_t new, uint64_t old, uint64_t mask)
@@ -206,7 +207,9 @@ static void update_irq(struct HPETTimer *timer, int set)
             }
         }
     } else if (timer_fsb_route(timer)) {
-        stl_le_phys(timer->fsb >> 32, timer->fsb & 0xffffffff);
+        address_space_stl_le(&address_space_memory, timer->fsb >> 32,
+                             timer->fsb & 0xffffffff, MEMTXATTRS_UNSPECIFIED,
+                             NULL);
     } else if (timer->config & HPET_TN_TYPE_LEVEL) {
         s->isr |= mask;
         /* fold the ICH PIRQ# pin's internal inversion logic into hpet */
@@ -236,6 +239,18 @@ static int hpet_pre_load(void *opaque)
     /* version 1 only supports 3, later versions will load the actual value */
     s->num_timers = HPET_MIN_TIMERS;
     return 0;
+}
+
+static bool hpet_validate_num_timers(void *opaque, int version_id)
+{
+    HPETState *s = opaque;
+
+    if (s->num_timers < HPET_MIN_TIMERS) {
+        return false;
+    } else if (s->num_timers > HPET_MAX_TIMERS) {
+        return false;
+    }
+    return true;
 }
 
 static int hpet_post_load(void *opaque, int version_id)
@@ -269,8 +284,8 @@ static const VMStateDescription vmstate_hpet_rtc_irq_level = {
     .name = "hpet/rtc_irq_level",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField[]) {
+    .needed = hpet_rtc_irq_level_needed,
+    .fields = (VMStateField[]) {
         VMSTATE_UINT8(rtc_irq_level, HPETState),
         VMSTATE_END_OF_LIST()
     }
@@ -280,15 +295,14 @@ static const VMStateDescription vmstate_hpet_timer = {
     .name = "hpet_timer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT8(tn, HPETTimer),
         VMSTATE_UINT64(config, HPETTimer),
         VMSTATE_UINT64(cmp, HPETTimer),
         VMSTATE_UINT64(fsb, HPETTimer),
         VMSTATE_UINT64(period, HPETTimer),
         VMSTATE_UINT8(wrap_flag, HPETTimer),
-        VMSTATE_TIMER(qemu_timer, HPETTimer),
+        VMSTATE_TIMER_PTR(qemu_timer, HPETTimer),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -297,26 +311,22 @@ static const VMStateDescription vmstate_hpet = {
     .name = "hpet",
     .version_id = 2,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .pre_save = hpet_pre_save,
     .pre_load = hpet_pre_load,
     .post_load = hpet_post_load,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT64(config, HPETState),
         VMSTATE_UINT64(isr, HPETState),
         VMSTATE_UINT64(hpet_counter, HPETState),
         VMSTATE_UINT8_V(num_timers, HPETState, 2),
+        VMSTATE_VALIDATE("num_timers in range", hpet_validate_num_timers),
         VMSTATE_STRUCT_VARRAY_UINT8(timer, HPETState, num_timers, 0,
                                     vmstate_hpet_timer, HPETTimer),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (VMStateSubsection[]) {
-        {
-            .vmsd = &vmstate_hpet_rtc_irq_level,
-            .needed = hpet_rtc_irq_level_needed,
-        }, {
-            /* empty */
-        }
+    .subsections = (const VMStateDescription*[]) {
+        &vmstate_hpet_rtc_irq_level,
+        NULL
     }
 };
 
@@ -505,7 +515,8 @@ static void hpet_ram_write(void *opaque, hwaddr addr,
                 timer->cmp = (uint32_t)timer->cmp;
                 timer->period = (uint32_t)timer->period;
             }
-            if (activating_bit(old_val, new_val, HPET_TN_ENABLE)) {
+            if (activating_bit(old_val, new_val, HPET_TN_ENABLE) &&
+                hpet_enabled(s)) {
                 hpet_set_timer(timer);
             } else if (deactivating_bit(old_val, new_val, HPET_TN_ENABLE)) {
                 hpet_del_timer(timer);
@@ -747,7 +758,7 @@ static void hpet_realize(DeviceState *dev, Error **errp)
     /* 64-bit main counter; LegacyReplacementRoute. */
     s->capability = 0x8086a001ULL;
     s->capability |= (s->num_timers - 1) << HPET_ID_NUM_TIM_SHIFT;
-    s->capability |= ((HPET_CLK_PERIOD) << 32);
+    s->capability |= ((uint64_t)(HPET_CLK_PERIOD * FS_PER_NS) << 32);
 
     qdev_init_gpio_in(dev, hpet_handle_legacy_irq, 2);
     qdev_init_gpio_out(dev, &s->pit_enabled, 1);

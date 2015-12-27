@@ -28,6 +28,7 @@
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "exec/address-spaces.h"
+#include "elf.h"
 
 typedef struct {
     MoxieCPU *cpu;
@@ -51,7 +52,7 @@ static void load_kernel(MoxieCPU *cpu, LoaderParams *loader_params)
 
     kernel_size = load_elf(loader_params->kernel_filename,  NULL, NULL,
                            &loader_params->entry, &kernel_low, &kernel_high, 1,
-                           ELF_MACHINE, 0);
+                           EM_MOXIE, 0);
 
     if (!kernel_size) {
         fprintf(stderr, "qemu: could not load kernel '%s'\n",
@@ -129,14 +130,14 @@ static inline DeviceState *marin_timer_create(qemu_irq irq)
     return dev;
 }
 
-static void marin_init(QEMUMachineInitArgs *args)
+static void marin_init(MachineState *machine)
 {
     MoxieCPU *cpu = NULL;
-    ram_addr_t ram_size = args->ram_size;
-    const char *cpu_model = args->cpu_model;
-    const char *kernel_filename = args->kernel_filename;
-    const char *kernel_cmdline = args->kernel_cmdline;
-    const char *initrd_filename = args->initrd_filename;
+    ram_addr_t ram_size = machine->ram_size;
+    const char *cpu_model = machine->cpu_model;
+    const char *kernel_filename = machine->kernel_filename;
+    const char *kernel_cmdline = machine->kernel_cmdline;
+    const char *initrd_filename = machine->initrd_filename;
     CPUMoxieState *env;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *ocram = g_new(MemoryRegion, 1);
@@ -163,15 +164,15 @@ static void marin_init(QEMUMachineInitArgs *args)
     qemu_register_reset(main_cpu_reset, reset_info);
 
     /* Allocate RAM. */
-    memory_region_init_ram(ocram, NULL, "marin-onchip.ram", 0x1000*4);
+    memory_region_init_ram(ocram, NULL, "marin-onchip.ram", 0x1000*4, &error_fatal);
     vmstate_register_ram_global(ocram);
     memory_region_add_subregion(address_space_mem, 0x10000000, ocram);
 
-    memory_region_init_ram(ram, NULL, "marin-external.ram", ram_size);
+    memory_region_init_ram(ram, NULL, "marin-external.ram", ram_size, &error_fatal);
     vmstate_register_ram_global(ram);
     memory_region_add_subregion(address_space_mem, ram_base, ram);
 
-    memory_region_init_ram(rom, NULL, "moxie.rom", 128*0x1000);
+    memory_region_init_ram(rom, NULL, "moxie.rom", 128*0x1000, &error_fatal);
     vmstate_register_ram_global(rom);
     memory_region_add_subregion(get_system_memory(), 0x1000, rom);
 
@@ -191,16 +192,12 @@ static void marin_init(QEMUMachineInitArgs *args)
     marin_timer_create(env->irq[1]);
 }
 
-static QEMUMachine marin_machine = {
-    .name = "marin",
-    .desc = "Marin SoC",
-    .init = marin_init,
-    .is_default = 1,
-};
-
-static void moxie_machine_init(void)
+static void marin_machine_init(MachineClass *mc)
 {
-    qemu_register_machine(&marin_machine);
+    mc->desc = "Moxie SoC";
+    mc->init = marin_init;
+    mc->is_default = 1;
 }
 
-machine_init(moxie_machine_init)
+DEFINE_MACHINE("marin", marin_machine_init)
+

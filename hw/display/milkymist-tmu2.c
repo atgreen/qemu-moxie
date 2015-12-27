@@ -30,8 +30,8 @@
 #include "qemu/error-report.h"
 
 #include <X11/Xlib.h>
-#include <GL/gl.h>
-#include <GL/glx.h>
+#include <epoxy/gl.h>
+#include <epoxy/glx.h>
 
 enum {
     R_CTL = 0,
@@ -463,8 +463,7 @@ static const VMStateDescription vmstate_milkymist_tmu2 = {
     .name = "milkymist-tmu2",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, MilkymistTMU2State, R_MAX),
         VMSTATE_END_OF_LIST()
     }

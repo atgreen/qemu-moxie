@@ -51,28 +51,12 @@ static int apic_ffs_bit(uint32_t value)
     return ctz32(value);
 }
 
-static inline void apic_set_bit(uint32_t *tab, int index)
-{
-    int i, mask;
-    i = index >> 5;
-    mask = 1 << (index & 0x1f);
-    tab[i] |= mask;
-}
-
 static inline void apic_reset_bit(uint32_t *tab, int index)
 {
     int i, mask;
     i = index >> 5;
     mask = 1 << (index & 0x1f);
     tab[i] &= ~mask;
-}
-
-static inline int apic_get_bit(uint32_t *tab, int index)
-{
-    int i, mask;
-    i = index >> 5;
-    mask = 1 << (index & 0x1f);
-    return !!(tab[i] & mask);
 }
 
 /* return -1 if no bit is set */
@@ -98,8 +82,8 @@ static void apic_sync_vapic(APICCommonState *s, int sync_type)
         return;
     }
     if (sync_type & SYNC_FROM_VAPIC) {
-        cpu_physical_memory_rw(s->vapic_paddr, (void *)&vapic_state,
-                               sizeof(vapic_state), 0);
+        cpu_physical_memory_read(s->vapic_paddr, &vapic_state,
+                                 sizeof(vapic_state));
         s->tpr = vapic_state.tpr;
     }
     if (sync_type & (SYNC_TO_VAPIC | SYNC_ISR_IRR_TO_VAPIC)) {
@@ -129,7 +113,8 @@ static void apic_sync_vapic(APICCommonState *s, int sync_type)
         }
         vapic_state.irr = vector & 0xff;
 
-        cpu_physical_memory_write_rom(s->vapic_paddr + start,
+        cpu_physical_memory_write_rom(&address_space_memory,
+                                      s->vapic_paddr + start,
                                       ((void *)&vapic_state) + start, length);
     }
 }
@@ -187,7 +172,7 @@ void apic_deliver_pic_intr(DeviceState *dev, int level)
             apic_reset_bit(s->irr, lvt & 0xff);
             /* fall through */
         case APIC_DM_EXTINT:
-            cpu_reset_interrupt(CPU(s->cpu), CPU_INTERRUPT_HARD);
+            apic_update_irq(s);
             break;
         }
     }
@@ -200,12 +185,12 @@ static void apic_external_nmi(APICCommonState *s)
 
 #define foreach_apic(apic, deliver_bitmask, code) \
 {\
-    int __i, __j, __mask;\
+    int __i, __j;\
     for(__i = 0; __i < MAX_APIC_WORDS; __i++) {\
-        __mask = deliver_bitmask[__i];\
+        uint32_t __mask = deliver_bitmask[__i];\
         if (__mask) {\
             for(__j = 0; __j < 32; __j++) {\
-                if (__mask & (1 << __j)) {\
+                if (__mask & (1U << __j)) {\
                     apic = local_apics[__i * 32 + __j];\
                     if (apic) {\
                         code;\
@@ -317,7 +302,7 @@ static uint8_t apic_get_tpr(APICCommonState *s)
     return s->tpr >> 4;
 }
 
-static int apic_get_ppr(APICCommonState *s)
+int apic_get_ppr(APICCommonState *s)
 {
     int tpr, isrv, ppr;
 
@@ -348,6 +333,11 @@ static int apic_get_arb_pri(APICCommonState *s)
 static int apic_irq_pending(APICCommonState *s)
 {
     int irrv, ppr;
+
+    if (!(s->spurious_vec & APIC_SV_ENABLE)) {
+        return 0;
+    }
+
     irrv = get_highest_priority_int(s->irr);
     if (irrv < 0) {
         return 0;
@@ -364,15 +354,15 @@ static int apic_irq_pending(APICCommonState *s)
 static void apic_update_irq(APICCommonState *s)
 {
     CPUState *cpu;
+    DeviceState *dev = (DeviceState *)s;
 
-    if (!(s->spurious_vec & APIC_SV_ENABLE)) {
-        return;
-    }
     cpu = CPU(s->cpu);
     if (!qemu_cpu_is_self(cpu)) {
         cpu_interrupt(cpu, CPU_INTERRUPT_POLL);
     } else if (apic_irq_pending(s) > 0) {
         cpu_interrupt(cpu, CPU_INTERRUPT_HARD);
+    } else if (!apic_accept_pic_intr(dev) || !pic_get_output(isa_pic)) {
+        cpu_reset_interrupt(cpu, CPU_INTERRUPT_HARD);
     }
 }
 
@@ -544,10 +534,12 @@ static void apic_deliver(DeviceState *dev, uint8_t dest, uint8_t dest_mode,
 
 static bool apic_check_pic(APICCommonState *s)
 {
-    if (!apic_accept_pic_intr(&s->busdev.qdev) || !pic_get_output(isa_pic)) {
+    DeviceState *dev = (DeviceState *)s;
+
+    if (!apic_accept_pic_intr(dev) || !pic_get_output(isa_pic)) {
         return false;
     }
-    apic_deliver_pic_intr(&s->busdev.qdev, 1);
+    apic_deliver_pic_intr(dev, 1);
     return true;
 }
 
@@ -566,7 +558,10 @@ int apic_get_interrupt(DeviceState *dev)
     apic_sync_vapic(s, SYNC_FROM_VAPIC);
     intno = apic_irq_pending(s);
 
-    if (intno == 0) {
+    /* if there is an interrupt from the 8259, let the caller handle
+     * that first since ExtINT interrupts ignore the priority.
+     */
+    if (intno == 0 || apic_check_pic(s)) {
         apic_sync_vapic(s, SYNC_TO_VAPIC);
         return -1;
     } else if (intno < 0) {
@@ -576,9 +571,6 @@ int apic_get_interrupt(DeviceState *dev)
     apic_reset_bit(s->irr, intno);
     apic_set_bit(s->isr, intno);
     apic_sync_vapic(s, SYNC_TO_VAPIC);
-
-    /* re-inject if there is still a pending PIC interrupt */
-    apic_check_pic(s);
 
     apic_update_irq(s);
 
@@ -674,7 +666,7 @@ static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
         val = s->id << 24;
         break;
     case 0x03: /* version */
-        val = 0x11 | ((APIC_LVT_NB - 1) << 16); /* version 0x11 */
+        val = s->version | ((APIC_LVT_NB - 1) << 16);
         break;
     case 0x08:
         apic_sync_vapic(s, SYNC_FROM_VAPIC);
@@ -697,7 +689,7 @@ static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
         val = s->log_dest << 24;
         break;
     case 0x0e:
-        val = s->dest_mode << 28;
+        val = (s->dest_mode << 28) | 0xfffffff;
         break;
     case 0x0f:
         val = s->spurious_vec;
@@ -731,7 +723,7 @@ static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
         val = s->divide_conf;
         break;
     default:
-        s->esr |= ESR_ILLEGAL_ADDRESS;
+        s->esr |= APIC_ESR_ILLEGAL_ADDRESS;
         val = 0;
         break;
     }
@@ -844,7 +836,7 @@ static void apic_mem_writel(void *opaque, hwaddr addr, uint32_t val)
         }
         break;
     default:
-        s->esr |= ESR_ILLEGAL_ADDRESS;
+        s->esr |= APIC_ESR_ILLEGAL_ADDRESS;
         break;
     }
 }

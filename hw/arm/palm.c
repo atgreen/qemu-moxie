@@ -191,12 +191,12 @@ static struct arm_boot_info palmte_binfo = {
     .board_id = 0x331,
 };
 
-static void palmte_init(QEMUMachineInitArgs *args)
+static void palmte_init(MachineState *machine)
 {
-    const char *cpu_model = args->cpu_model;
-    const char *kernel_filename = args->kernel_filename;
-    const char *kernel_cmdline = args->kernel_cmdline;
-    const char *initrd_filename = args->initrd_filename;
+    const char *cpu_model = machine->cpu_model;
+    const char *kernel_filename = machine->kernel_filename;
+    const char *kernel_cmdline = machine->kernel_cmdline;
+    const char *initrd_filename = machine->initrd_filename;
     MemoryRegion *address_space_mem = get_system_memory();
     struct omap_mpu_state_s *mpu;
     int flash_size = 0x00800000;
@@ -212,7 +212,8 @@ static void palmte_init(QEMUMachineInitArgs *args)
     mpu = omap310_mpu_init(address_space_mem, sdram_size, cpu_model);
 
     /* External Flash (EMIFS) */
-    memory_region_init_ram(flash, NULL, "palmte.flash", flash_size);
+    memory_region_init_ram(flash, NULL, "palmte.flash", flash_size,
+                           &error_fatal);
     vmstate_register_ram_global(flash);
     memory_region_set_readonly(flash, true);
     memory_region_add_subregion(address_space_mem, OMAP_CS0_BASE, flash);
@@ -268,15 +269,10 @@ static void palmte_init(QEMUMachineInitArgs *args)
     arm_load_kernel(mpu->cpu, &palmte_binfo);
 }
 
-static QEMUMachine palmte_machine = {
-    .name = "cheetah",
-    .desc = "Palm Tungsten|E aka. Cheetah PDA (OMAP310)",
-    .init = palmte_init,
-};
-
-static void palmte_machine_init(void)
+static void palmte_machine_init(MachineClass *mc)
 {
-    qemu_register_machine(&palmte_machine);
+    mc->desc = "Palm Tungsten|E aka. Cheetah PDA (OMAP310)";
+    mc->init = palmte_init;
 }
 
-machine_init(palmte_machine_init);
+DEFINE_MACHINE("cheetah", palmte_machine_init)

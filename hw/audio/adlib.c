@@ -57,11 +57,6 @@ void YMF262UpdateOneQEMU (int which, INT16 *dst, int length);
 #define SHIFT 1
 #endif
 
-#define IO_READ_PROTO(name) \
-    uint32_t name (void *opaque, uint32_t nport)
-#define IO_WRITE_PROTO(name) \
-    void name (void *opaque, uint32_t nport, uint32_t val)
-
 #define TYPE_ADLIB "adlib"
 #define ADLIB(obj) OBJECT_CHECK(AdlibState, (obj), TYPE_ADLIB)
 
@@ -86,6 +81,7 @@ typedef struct {
 #ifndef HAS_YMF262
     FM_OPL *opl;
 #endif
+    PortioList port_list;
 } AdlibState;
 
 static AdlibState *glob_adlib;
@@ -123,7 +119,7 @@ static void adlib_kill_timers (AdlibState *s)
     }
 }
 
-static IO_WRITE_PROTO (adlib_write)
+static void adlib_write(void *opaque, uint32_t nport, uint32_t val)
 {
     AdlibState *s = opaque;
     int a = nport & 3;
@@ -140,7 +136,7 @@ static IO_WRITE_PROTO (adlib_write)
 #endif
 }
 
-static IO_READ_PROTO (adlib_read)
+static uint32_t adlib_read(void *opaque, uint32_t nport)
 {
     AdlibState *s = opaque;
     uint8_t data;
@@ -274,9 +270,7 @@ static void Adlib_fini (AdlibState *s)
     }
 #endif
 
-    if (s->mixbuf) {
-        g_free (s->mixbuf);
-    }
+    g_free(s->mixbuf);
 
     s->active = 0;
     s->enabled = 0;
@@ -293,7 +287,6 @@ static MemoryRegionPortio adlib_portio_list[] = {
 static void adlib_realizefn (DeviceState *dev, Error **errp)
 {
     AdlibState *s = ADLIB(dev);
-    PortioList *port_list = g_new(PortioList, 1);
     struct audsettings as;
 
     if (glob_adlib) {
@@ -349,12 +342,12 @@ static void adlib_realizefn (DeviceState *dev, Error **errp)
 
     adlib_portio_list[0].offset = s->port;
     adlib_portio_list[1].offset = s->port + 8;
-    portio_list_init (port_list, OBJECT(s), adlib_portio_list, s, "adlib");
-    portio_list_add (port_list, isa_address_space_io(&s->parent_obj), 0);
+    portio_list_init (&s->port_list, OBJECT(s), adlib_portio_list, s, "adlib");
+    portio_list_add (&s->port_list, isa_address_space_io(&s->parent_obj), 0);
 }
 
 static Property adlib_properties[] = {
-    DEFINE_PROP_HEX32  ("iobase",  AdlibState, port, 0x220),
+    DEFINE_PROP_UINT32 ("iobase",  AdlibState, port, 0x220),
     DEFINE_PROP_UINT32 ("freq",    AdlibState, freq,  44100),
     DEFINE_PROP_END_OF_LIST (),
 };

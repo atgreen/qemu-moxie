@@ -1,10 +1,12 @@
 /*
  * Throttle infrastructure tests
  *
- * Copyright Nodalink, SARL. 2013
+ * Copyright Nodalink, EURL. 2013-2014
+ * Copyright Igalia, S.L. 2015
  *
  * Authors:
- *  Benoît Canet     <benoit.canet@irqsave.net>
+ *  Benoît Canet     <benoit.canet@nodalink.com>
+ *  Alberto Garcia   <berto@igalia.com>
  *
  * This work is licensed under the terms of the GNU LGPL, version 2 or later.
  * See the COPYING.LIB file in the top-level directory.
@@ -12,11 +14,16 @@
 
 #include <glib.h>
 #include <math.h>
+#include "block/aio.h"
 #include "qemu/throttle.h"
+#include "qemu/error-report.h"
+#include "block/throttle-groups.h"
 
-LeakyBucket    bkt;
-ThrottleConfig cfg;
-ThrottleState  ts;
+static AioContext     *ctx;
+static LeakyBucket    bkt;
+static ThrottleConfig cfg;
+static ThrottleState  ts;
+static ThrottleTimers tt;
 
 /* useful function */
 static bool double_cmp(double x, double y)
@@ -100,16 +107,19 @@ static void test_init(void)
 {
     int i;
 
-    /* fill the structure with crap */
+    /* fill the structures with crap */
     memset(&ts, 1, sizeof(ts));
+    memset(&tt, 1, sizeof(tt));
 
-    /* init the structure */
-    throttle_init(&ts, QEMU_CLOCK_VIRTUAL, read_timer_cb, write_timer_cb, &ts);
+    /* init structures */
+    throttle_init(&ts);
+    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+                         read_timer_cb, write_timer_cb, &ts);
 
     /* check initialized fields */
-    g_assert(ts.clock_type == QEMU_CLOCK_VIRTUAL);
-    g_assert(ts.timers[0]);
-    g_assert(ts.timers[1]);
+    g_assert(tt.clock_type == QEMU_CLOCK_VIRTUAL);
+    g_assert(tt.timers[0]);
+    g_assert(tt.timers[1]);
 
     /* check other fields where cleared */
     g_assert(!ts.previous_leak);
@@ -120,16 +130,18 @@ static void test_init(void)
         g_assert(!ts.cfg.buckets[i].level);
     }
 
-    throttle_destroy(&ts);
+    throttle_timers_destroy(&tt);
 }
 
 static void test_destroy(void)
 {
     int i;
-    throttle_init(&ts, QEMU_CLOCK_VIRTUAL, read_timer_cb, write_timer_cb, &ts);
-    throttle_destroy(&ts);
+    throttle_init(&ts);
+    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+                         read_timer_cb, write_timer_cb, &ts);
+    throttle_timers_destroy(&tt);
     for (i = 0; i < 2; i++) {
-        g_assert(!ts.timers[i]);
+        g_assert(!tt.timers[i]);
     }
 }
 
@@ -165,10 +177,12 @@ static void test_config_functions(void)
 
     orig_cfg.op_size = 1;
 
-    throttle_init(&ts, QEMU_CLOCK_VIRTUAL, read_timer_cb, write_timer_cb, &ts);
+    throttle_init(&ts);
+    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+                         read_timer_cb, write_timer_cb, &ts);
     /* structure reset by throttle_init previous_leak should be null */
     g_assert(!ts.previous_leak);
-    throttle_config(&ts, &orig_cfg);
+    throttle_config(&ts, &tt, &orig_cfg);
 
     /* has previous leak been initialized by throttle_config ? */
     g_assert(ts.previous_leak);
@@ -176,7 +190,7 @@ static void test_config_functions(void)
     /* get back the fixed configuration */
     throttle_get_config(&ts, &final_cfg);
 
-    throttle_destroy(&ts);
+    throttle_timers_destroy(&tt);
 
     g_assert(final_cfg.buckets[THROTTLE_BPS_TOTAL].avg == 153);
     g_assert(final_cfg.buckets[THROTTLE_BPS_READ].avg  == 56);
@@ -315,21 +329,69 @@ static void test_is_valid(void)
     test_is_valid_for_value(1, true);
 }
 
+static void test_max_is_missing_limit(void)
+{
+    int i;
+
+    for (i = 0; i < BUCKETS_COUNT; i++) {
+        memset(&cfg, 0, sizeof(cfg));
+        cfg.buckets[i].max = 100;
+        cfg.buckets[i].avg = 0;
+        g_assert(throttle_max_is_missing_limit(&cfg));
+
+        cfg.buckets[i].max = 0;
+        cfg.buckets[i].avg = 0;
+        g_assert(!throttle_max_is_missing_limit(&cfg));
+
+        cfg.buckets[i].max = 0;
+        cfg.buckets[i].avg = 100;
+        g_assert(!throttle_max_is_missing_limit(&cfg));
+    }
+}
+
 static void test_have_timer(void)
 {
-    /* zero the structure */
+    /* zero structures */
     memset(&ts, 0, sizeof(ts));
+    memset(&tt, 0, sizeof(tt));
 
     /* no timer set should return false */
-    g_assert(!throttle_have_timer(&ts));
+    g_assert(!throttle_timers_are_initialized(&tt));
 
-    /* init the structure */
-    throttle_init(&ts, QEMU_CLOCK_VIRTUAL, read_timer_cb, write_timer_cb, &ts);
+    /* init structures */
+    throttle_init(&ts);
+    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+                         read_timer_cb, write_timer_cb, &ts);
 
     /* timer set by init should return true */
-    g_assert(throttle_have_timer(&ts));
+    g_assert(throttle_timers_are_initialized(&tt));
 
-    throttle_destroy(&ts);
+    throttle_timers_destroy(&tt);
+}
+
+static void test_detach_attach(void)
+{
+    /* zero structures */
+    memset(&ts, 0, sizeof(ts));
+    memset(&tt, 0, sizeof(tt));
+
+    /* init the structure */
+    throttle_init(&ts);
+    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+                         read_timer_cb, write_timer_cb, &ts);
+
+    /* timer set by init should return true */
+    g_assert(throttle_timers_are_initialized(&tt));
+
+    /* timer should no longer exist after detaching */
+    throttle_timers_detach_aio_context(&tt);
+    g_assert(!throttle_timers_are_initialized(&tt));
+
+    /* timer should exist again after attaching */
+    throttle_timers_attach_aio_context(&tt, ctx);
+    g_assert(throttle_timers_are_initialized(&tt));
+
+    throttle_timers_destroy(&tt);
 }
 
 static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
@@ -357,8 +419,10 @@ static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
 
     cfg.op_size = op_size;
 
-    throttle_init(&ts, QEMU_CLOCK_VIRTUAL, read_timer_cb, write_timer_cb, &ts);
-    throttle_config(&ts, &cfg);
+    throttle_init(&ts);
+    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+                         read_timer_cb, write_timer_cb, &ts);
+    throttle_config(&ts, &tt, &cfg);
 
     /* account a read */
     throttle_account(&ts, false, size);
@@ -383,7 +447,7 @@ static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
         return false;
     }
 
-    throttle_destroy(&ts);
+    throttle_timers_destroy(&tt);
 
     return true;
 }
@@ -459,9 +523,81 @@ static void test_accounting(void)
                                 (64.0 / 13)));
 }
 
+static void test_groups(void)
+{
+    ThrottleConfig cfg1, cfg2;
+    BlockDriverState *bdrv1, *bdrv2, *bdrv3;
+
+    bdrv1 = bdrv_new();
+    bdrv2 = bdrv_new();
+    bdrv3 = bdrv_new();
+
+    g_assert(bdrv1->throttle_state == NULL);
+    g_assert(bdrv2->throttle_state == NULL);
+    g_assert(bdrv3->throttle_state == NULL);
+
+    throttle_group_register_bs(bdrv1, "bar");
+    throttle_group_register_bs(bdrv2, "foo");
+    throttle_group_register_bs(bdrv3, "bar");
+
+    g_assert(bdrv1->throttle_state != NULL);
+    g_assert(bdrv2->throttle_state != NULL);
+    g_assert(bdrv3->throttle_state != NULL);
+
+    g_assert(!strcmp(throttle_group_get_name(bdrv1), "bar"));
+    g_assert(!strcmp(throttle_group_get_name(bdrv2), "foo"));
+    g_assert(bdrv1->throttle_state == bdrv3->throttle_state);
+
+    /* Setting the config of a group member affects the whole group */
+    memset(&cfg1, 0, sizeof(cfg1));
+    cfg1.buckets[THROTTLE_BPS_READ].avg  = 500000;
+    cfg1.buckets[THROTTLE_BPS_WRITE].avg = 285000;
+    cfg1.buckets[THROTTLE_OPS_READ].avg  = 20000;
+    cfg1.buckets[THROTTLE_OPS_WRITE].avg = 12000;
+    throttle_group_config(bdrv1, &cfg1);
+
+    throttle_group_get_config(bdrv1, &cfg1);
+    throttle_group_get_config(bdrv3, &cfg2);
+    g_assert(!memcmp(&cfg1, &cfg2, sizeof(cfg1)));
+
+    cfg2.buckets[THROTTLE_BPS_READ].avg  = 4547;
+    cfg2.buckets[THROTTLE_BPS_WRITE].avg = 1349;
+    cfg2.buckets[THROTTLE_OPS_READ].avg  = 123;
+    cfg2.buckets[THROTTLE_OPS_WRITE].avg = 86;
+    throttle_group_config(bdrv3, &cfg1);
+
+    throttle_group_get_config(bdrv1, &cfg1);
+    throttle_group_get_config(bdrv3, &cfg2);
+    g_assert(!memcmp(&cfg1, &cfg2, sizeof(cfg1)));
+
+    throttle_group_unregister_bs(bdrv1);
+    throttle_group_unregister_bs(bdrv2);
+    throttle_group_unregister_bs(bdrv3);
+
+    g_assert(bdrv1->throttle_state == NULL);
+    g_assert(bdrv2->throttle_state == NULL);
+    g_assert(bdrv3->throttle_state == NULL);
+}
+
 int main(int argc, char **argv)
 {
-    init_clocks();
+    Error *local_error = NULL;
+
+    qemu_init_main_loop(&local_error);
+    ctx = qemu_get_aio_context();
+
+    if (!ctx) {
+        error_report("Failed to create AIO Context: '%s'",
+                     local_error ? error_get_pretty(local_error) :
+                     "Failed to initialize the QEMU main loop");
+        if (local_error) {
+            error_free(local_error);
+        }
+        exit(1);
+    }
+
+    bdrv_init();
+
     do {} while (g_main_context_iteration(NULL, false));
 
     /* tests in the same order as the header function declarations */
@@ -471,11 +607,14 @@ int main(int argc, char **argv)
     g_test_add_func("/throttle/init",               test_init);
     g_test_add_func("/throttle/destroy",            test_destroy);
     g_test_add_func("/throttle/have_timer",         test_have_timer);
+    g_test_add_func("/throttle/detach_attach",      test_detach_attach);
     g_test_add_func("/throttle/config/enabled",     test_enabled);
     g_test_add_func("/throttle/config/conflicting", test_conflicting_config);
     g_test_add_func("/throttle/config/is_valid",    test_is_valid);
+    g_test_add_func("/throttle/config/max",         test_max_is_missing_limit);
     g_test_add_func("/throttle/config_functions",   test_config_functions);
     g_test_add_func("/throttle/accounting",         test_accounting);
+    g_test_add_func("/throttle/groups",             test_groups);
     return g_test_run();
 }
 

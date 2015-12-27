@@ -46,6 +46,7 @@ typedef struct PL110State {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
+    MemoryRegionSection fbsection;
     QemuConsole *con;
 
     int version;
@@ -238,12 +239,20 @@ static void pl110_update_display(void *opaque)
     }
     dest_width *= s->cols;
     first = 0;
-    framebuffer_update_display(surface, sysbus_address_space(sbd),
-                               s->upbase, s->cols, s->rows,
+    if (s->invalidate) {
+        framebuffer_update_memory_section(&s->fbsection,
+                                          sysbus_address_space(sbd),
+                                          s->upbase,
+                                          s->rows, src_width);
+    }
+
+    framebuffer_update_display(surface, &s->fbsection,
+                               s->cols, s->rows,
                                src_width, dest_width, 0,
                                s->invalidate,
                                fn, s->palette,
                                &first, &last);
+
     if (first >= 0) {
         dpy_gfx_update(s->con, 0, first, s->cols, last - first + 1);
     }
@@ -464,7 +473,7 @@ static int pl110_initfn(SysBusDevice *sbd)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
     qdev_init_gpio_in(dev, pl110_mux_ctrl_set, 1);
-    s->con = graphic_console_init(dev, &pl110_gfx_ops, s);
+    s->con = graphic_console_init(dev, 0, &pl110_gfx_ops, s);
     return 0;
 }
 

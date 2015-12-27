@@ -4,6 +4,6 @@
 
 CpuDefinitionInfoList *arch_query_cpu_definitions(Error **errp)
 {
-    error_set(errp, QERR_NOT_SUPPORTED);
+    error_setg(errp, QERR_UNSUPPORTED);
     return NULL;
 }
